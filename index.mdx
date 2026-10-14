@@ -1,20 +1,402 @@
 ---
-title: "Introduction"
-description: "Welcome to your project"
+title: "Saxxes — Documentação da API Pública e Webhooks"
+description: "Guia de integração com a API Pública da Saxxes: ambientes, autenticação, permissões, operações de recebíveis e introdução aos webhooks."
+sidebarTitle: "API Pública e Webhooks"
+icon: "book-open"
+tag: "DEMONSTRAÇÃO"
 ---
 
-Write a short description of your product here. What it does, who it's for, and what they can accomplish with it.
+<Info>
+  **Versão do conteúdo:** 1.0 · **Última atualização informada:** 13/10/2026.
+
+  Esta página é uma **demonstração de apresentação no Mintlify**, baseada em um recorte da documentação da Saxxes. O material fornecido não contém o detalhamento dos webhooks nem a lista completa de erros da API; essas informações não foram inventadas.
+</Info>
+
+## Visão geral
+
+A **API Pública** permite que o sistema da sua empresa realize operações de recebíveis na plataforma Saxxes, como criar lotes, atualizar itens, solicitar alterações e cancelar itens.
+
+Os **webhooks** fazem o caminho inverso: a Saxxes notifica o sistema integrador quando determinados eventos acontecem na plataforma.
+
+<Columns cols={2}>
+  <Card title="API Pública" icon="arrow-up-right">
+    Operações de recebíveis iniciadas pelo sistema integrador, autenticadas com OAuth 2.0.
+  </Card>
+  <Card title="Webhooks" icon="bell">
+    Notificações iniciadas pela Saxxes quando ocorrem eventos na plataforma.
+  </Card>
+  <Card title="Dois ambientes" icon="server">
+    Homologação para testes e produção para operações reais, com credenciais independentes.
+  </Card>
+  <Card title="Acesso por empresa" icon="shield-check">
+    As permissões dependem do portal e do papel da empresa identificada pela credencial.
+  </Card>
+</Columns>
+
+## Ambientes
+
+A integração está disponível em **Homologação** e **Produção**. Os endpoints utilizam caminhos relativos, combinados com a URL-base do ambiente escolhido.
+
+<Tabs>
+  <Tab title="Homologação">
+    **Base URL:** `https://apihml.saxxes.com.br`
+
+    Ambiente utilizado para testes e validações antes do uso em produção.
+
+    ```text URLs de exemplo
+    https://apihml.saxxes.com.br/oauth2/token
+    https://apihml.saxxes.com.br/api/oauth2/criar-lote
+    ```
+  </Tab>
+  <Tab title="Produção">
+    **Base URL:** `https://api.saxxes.com.br`
+
+    Ambiente destinado a operações reais.
+
+    ```text URLs de exemplo
+    https://api.saxxes.com.br/oauth2/token
+    https://api.saxxes.com.br/api/oauth2/criar-lote
+    ```
+  </Tab>
+</Tabs>
+
+<Warning>
+  **Credenciais e webhooks são independentes por ambiente.** Uma credencial de Homologação não funciona em Produção, e vice-versa.
+</Warning>
+
+### Convenções gerais
+
+| Item | Convenção |
+| --- | --- |
+| Requisições | JSON, exceto a obtenção do token (`application/x-www-form-urlencoded`) |
+| Respostas | JSON |
+| Codificação | UTF-8 |
+| Datas | `dd/MM/yyyy` |
+| Valores monetários | Número decimal, com ponto como separador (ex.: `150.75`) |
+| CPF e CNPJ | Somente números |
+| Identificadores | UUID |
+| Autenticação | OAuth 2.0 Client Credentials com Bearer token |
+
+## Autenticação
+
+A Saxxes utiliza **OAuth 2.0 — Client Credentials**. A empresa gera um **Client ID** e um **Secret**, solicita um token de curta duração e envia esse token nas chamadas à API Pública.
+
+<Steps>
+  <Step title="Gerar a credencial de integração">
+    Uma empresa com cadastro aprovado gera sua credencial na aba **API** da empresa, na interface Saxxes.
+
+    A credencial representa a empresa em um portal e em um papel específico: **sacado**, **fornecedor** ou **instituição financeira**.
+  </Step>
+  <Step title="Solicitar um token de acesso">
+    Envie `POST /oauth2/token`, com autenticação Basic usando o Client ID e o Secret, e com o campo `grant_type=client_credentials`.
+  </Step>
+  <Step title="Autenticar as requisições">
+    Inclua o token recebido no cabeçalho `Authorization: Bearer <access_token>` dos endpoints da API Pública.
+  </Step>
+</Steps>
+
+### Credencial de integração
+
+| Regra | Descrição |
+| --- | --- |
+| Quantidade | Uma credencial por empresa, dentro de cada combinação de portal e papel |
+| Pré-requisito | Cadastro da empresa aprovado |
+| Client ID | Entre 3 e 100 caracteres: letras minúsculas, números, `.`, `_` ou `-`; único na plataforma |
+| Descrição | Opcional, até 255 caracteres |
+| Secret | Gerado pela Saxxes |
+
+<Accordion title="Onde gerar a credencial na interface Saxxes" icon="list-ordered">
+  1. Acesse um portal Saxxes ou a Whitelabel disponibilizada para sua empresa.
+  2. No menu lateral, abra **Corporação > Empresa**.
+  3. Selecione a aba correspondente ao tipo de empresa.
+  4. Escolha a empresa e acesse **Ver empresa**.
+  5. Abra a aba **API**.
+  6. No card **API**, preencha o **Client ID** e, opcionalmente, a **Descrição**.
+  7. Clique em **Gerar Secret**.
+  8. Para visualizar o Secret gerado, use o ícone de olho do card.
+</Accordion>
+
+<Warning>
+  O **Secret é sensível**. Não o compartilhe em logs, capturas de tela ou documentos sem controle de acesso.
+</Warning>
+
+### Obter token de acesso
+
+**`POST /oauth2/token`**
+
+| Propriedade | Valor |
+| --- | --- |
+| Autenticação | `Authorization: Basic base64(client_id:secret)` |
+| Content-Type | `application/x-www-form-urlencoded` |
+| Corpo | `grant_type=client_credentials` |
+| Resposta de sucesso | `200 OK` |
+
+<CodeGroup>
+```bash cURL
+curl --request POST 'https://apihml.saxxes.com.br/oauth2/token' \
+  --user "$CLIENT_ID:$CLIENT_SECRET" \
+  --header 'Content-Type: application/x-www-form-urlencoded' \
+  --data-urlencode 'grant_type=client_credentials'
+```
+
+```http HTTP
+POST /oauth2/token HTTP/1.1
+Host: apihml.saxxes.com.br
+Authorization: Basic <base64(client_id:secret)>
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=client_credentials
+```
+</CodeGroup>
+
+O `curl --user` utiliza Basic Auth com o Client ID como usuário e o Secret como senha. Substitua as variáveis de ambiente por suas credenciais de Homologação.
+
+**Exemplo de resposta `200 OK`:**
+
+```json
+{
+  "access_token": "<access_token>",
+  "token_type": "Bearer",
+  "expires_in": 899
+}
+```
+
+<ResponseField name="access_token" type="string" required>
+  Token a ser enviado na autenticação das requisições. Trate seu conteúdo como **opaco**.
+</ResponseField>
+<ResponseField name="token_type" type="string" required>
+  Valor retornado: `Bearer`.
+</ResponseField>
+<ResponseField name="expires_in" type="integer" required>
+  Tempo de validade do token em segundos.
+</ResponseField>
 
 <Tip>
-  Ready to make this your own? Start by editing this page. Update your `docs.json` file to customize your site. Then fill out the [Quickstart](/quickstart) page.
+  A validade nominal do token é de **15 minutos**. Na integração, use o `expires_in` recebido na resposta em vez de assumir um número fixo de segundos.
 </Tip>
 
-<Card title="Quickstart" icon="rocket" href="/quickstart">
-  This card links to the quickstart page in your project.
-</Card>
-<Card title="Components" icon="puzzle-piece" href="https://mintlify.com/docs/components">
-  Add cards, callouts, steps, tabs, and more to design and structure your pages.
-</Card>
-<Card title="Settings" icon="gear" href="https://mintlify.com/docs/organize/settings">
-  Set your site name, branding, and navigation in the `docs.json` file.
-</Card>
+**Falha de autenticação na emissão do token:**
+
+```json 401 Unauthorized
+{"error":"invalid_client"}
+```
+
+O erro `401` pode indicar header de autenticação ausente, Client ID ou Secret inválidos, credencial excluída ou empresa não aprovada.
+
+### Usar o token de acesso
+
+Envie os seguintes cabeçalhos nas chamadas à API Pública:
+
+```http
+Authorization: Bearer <access_token>
+Accept: application/json
+Content-Type: application/json
+```
+
+Quando o token estiver ausente, inválido ou expirado, ou a credencial tiver sido excluída, a API poderá retornar **`401 Unauthorized`**, sem corpo, com a causa indicada em `WWW-Authenticate`:
+
+```http
+HTTP/1.1 401 Unauthorized
+WWW-Authenticate: Bearer error="invalid_token", error_description="..."
+```
+
+Nesse caso, o procedimento descrito na documentação de origem é obter um novo token e repetir a requisição **uma vez**. Se o problema persistir, valide a credencial.
+
+### Ciclo de vida da credencial
+
+| Ação na plataforma | Novos tokens | Tokens já emitidos |
+| --- | --- | --- |
+| Editar Client ID ou descrição | Exigem o novo Client ID; Secret inalterado | Válidos até expirar |
+| Regenerar Secret | Exigem o novo Secret imediatamente | Válidos até expirar (máximo de 15 minutos) |
+| Excluir credencial | Não podem mais ser obtidos | Invalidam imediatamente |
+| Empresa deixa de estar aprovada | Não podem mais ser obtidos | Válidos até expirar (máximo de 15 minutos) |
+
+<Info>
+  Em caso de suspeita de vazamento do **Secret**, a documentação de origem orienta regenerá-lo. Se houver suspeita de vazamento também do **token**, ela orienta excluir a credencial e criar outra, pois a exclusão invalida imediatamente os tokens emitidos.
+</Info>
+
+## API Pública
+
+A API documentada disponibiliza as seguintes operações de recebíveis:
+
+| Método | Endpoint | Operação | Autorização |
+| --- | --- | --- | --- |
+| `POST` | `/api/oauth2/criar-lote` | Criar lote de recebíveis | `RECEBIVEL_UPLOAD` |
+| `PATCH` | `/api/oauth2/itens/{itemId}` | Atualizar item de recebível | `RECEBIVEL_EDITAR` |
+| `POST` | `/api/oauth2/itens/solicitacao/alteracao` | Solicitar alteração de item | `RECEBIVEL_SOLICITAR_ALTERACAO` |
+| `PATCH` | `/api/oauth2/itens/solicitacao/cancelamento` | Cancelar solicitação de alteração | `RECEBIVEL_CANCELAR_SOLICITACAO` |
+| `PATCH` | `/api/oauth2/itens/cancelamento` | Cancelar item de recebível | `RECEBIVEL_CANCELAR` |
+
+<Note>
+  O recorte fornecido apresenta o detalhamento do endpoint **Criar lote de recebíveis**. As demais operações são listadas sem inventar parâmetros ou exemplos que não vieram da documentação de origem.
+</Note>
+
+### Controle de acesso por operação
+
+As autorizações são definidas por **portal** e **tipo de empresa**, configuradas pelo usuário ROOT e passíveis de customização por portal.
+
+| Operação | Risco Sacado | Risco Cedente |
+| --- | --- | --- |
+| Criar lote | Fornecedor e Sacado | Fornecedor e Sacado |
+| Atualizar item | Fornecedor e Sacado | Fornecedor e Sacado |
+| Solicitar alteração | Fornecedor e Sacado | Não se aplica |
+| Cancelar solicitação | Fornecedor e Sacado | Não se aplica |
+| Cancelar item | Fornecedor e Sacado | Somente Fornecedor |
+
+- A liberação da autorização vale a partir da **próxima requisição**, sem exigir novo token.
+- Nas operações sobre itens existentes, a empresa só pode atuar sobre itens dos quais participa como fornecedor ou sacado.
+- Quando uma operação não está autorizada, a API responde com **`403 Forbidden`**:
+
+```json 403 Forbidden
+{
+  "error": "Acesso Negado"
+}
+```
+
+## Criar lote de recebíveis
+
+**`POST /api/oauth2/criar-lote`** · Autorização: `RECEBIVEL_UPLOAD`
+
+Cria um lote com um ou mais recebíveis e seus respectivos itens, a partir de nota fiscal ou documento equivalente.
+
+<Columns cols={2}>
+  <Card title="201 Created" icon="check-circle">
+    Status de sucesso informado para a criação do lote.
+  </Card>
+  <Card title="400 KB" icon="file-json">
+    Tamanho máximo do corpo da requisição: **409.600 bytes**.
+  </Card>
+</Columns>
+
+<Info>
+  **Processamento tudo ou nada:** se houver erro, nenhum recebível do lote é criado.
+</Info>
+
+### Corpo da requisição
+
+| Campo | Tipo | Obrigatório | Regra principal |
+| --- | --- | --- | --- |
+| `recebiveis` | Array | Sim | Pelo menos um recebível |
+| `recebiveis[].dataEmissao` | Data | Sim | `dd/MM/yyyy` |
+| `recebiveis[].tipo` | Enum | Sim | Consulte os tipos aceitos abaixo |
+| `recebiveis[].numeroDocumento` | String | Sim | Máximo de 255 caracteres |
+| `recebiveis[].tipoPagamento` | Enum | Sim | `BOLETO` ou `CREDITO_CONTA` |
+| `recebiveis[].documentoFornecedor` | String | Sim | CPF/CNPJ somente números; máx. 15 caracteres; fornecedor cadastrado |
+| `recebiveis[].documentoAncora` | String | Sim | CPF/CNPJ somente números; máx. 15 caracteres; sacado cadastrado |
+| `recebiveis[].chaveNF` | String | Sim | Chave da nota fiscal |
+| `recebiveis[].itens` | Array | Sim | Pelo menos um item |
+| `recebiveis[].itens[].descricao` | String | Não | Máximo de 100 caracteres |
+| `recebiveis[].itens[].numeroDuplicata` | Integer | Sim | Número inteiro |
+| `recebiveis[].itens[].valor` | Decimal | Sim | Maior que zero |
+| `recebiveis[].itens[].vencimento` | Data | Sim | `dd/MM/yyyy`; não pode repetir para a mesma `chaveNF`; datas passadas podem ser recusadas conforme o portal |
+
+### Regras de negócio declaradas
+
+1. A combinação de **`chaveNF` + `vencimento`** identifica um título. Ela não pode se repetir na requisição nem já estar cadastrada.
+2. Se já houver recebível com a mesma `chaveNF` no portal, novos itens serão adicionados a ele. O `recebivelId` retornado será o existente e os demais campos de recebível da nova requisição não serão aplicados.
+3. Quando o portal não aceita títulos vencidos, itens com vencimento anterior à data atual serão recusados.
+
+<AccordionGroup>
+  <Accordion title="Tipos de recebível aceitos" icon="list">
+| Valor | Descrição |
+| --- | --- |
+| `NOTA_FISCAL_SERVICO` | Nota fiscal de serviço |
+| `NOTA_FISCAL_PRODUTO` | Nota fiscal de produto |
+| `NOTA_FISCAL_CONSUMIDOR` | Nota fiscal de consumidor |
+| `CONHECIMENTO_TRANSPORTE` | Conhecimento de transporte |
+| `CUPOM_FISCAL` | Cupom fiscal |
+| `MANIFESTO_DOCUMENTO_FISCAL` | Manifesto de documento fiscal |
+| `DUPLICATA` | Duplicata |
+| `PEDIDO_DE_VENDA` | Pedido de venda |
+| `PROMISSORIA` | Promissória |
+| `CONTRATO_PRESTACAO_SERVICO` | Contrato de prestação de serviço |
+| `NOTA_COMERCIAL` | Nota comercial |
+| `COMERCIAIS` | Recebíveis comerciais |
+| `CONTRATOS` | Contratos |
+| `CARTAO` | Recebíveis de cartão |
+| `BOLETO` | Boleto |
+| `PRECATORIO` | Precatórios |
+| `FOMENTO` | Fomento |
+| `CNAB` | CNAB |
+  </Accordion>
+  <Accordion title="Tipos de pagamento aceitos" icon="credit-card">
+| Valor | Descrição |
+| --- | --- |
+| `BOLETO` | Boleto |
+| `CREDITO_CONTA` | Crédito em conta |
+  </Accordion>
+</AccordionGroup>
+
+### Exemplo de requisição
+
+O exemplo abaixo foi reproduzido do material recebido. Antes de publicar externamente, confirme que todos os identificadores e documentos utilizados são **fictícios**.
+
+```json Requisição JSON
+{
+  "recebiveis": [
+    {
+      "dataEmissao": "12/03/2026",
+      "tipo": "DUPLICATA",
+      "numeroDocumento": "1234567899",
+      "tipoPagamento": "BOLETO",
+      "documentoFornecedor": "30547531000160",
+      "documentoAncora": "24805121000179",
+      "chaveNF": "51080701212344000127550010000000981364117781",
+      "itens": [
+        {
+          "descricao": "Descrição do item",
+          "numeroDuplicata": 1234567899,
+          "valor": 100.5,
+          "vencimento": "12/12/2026"
+        }
+      ]
+    }
+  ]
+}
+```
+
+### Resposta de sucesso
+
+```json 201 Created
+{
+  "recebiveis": [
+    {
+      "recebivelId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+      "itens": [
+        {
+          "itemId": "f6ba6351-f989-424d-b89d-4a9b9a279252"
+        }
+      ]
+    }
+  ]
+}
+```
+
+| Campo | Tipo | Descrição |
+| --- | --- | --- |
+| `recebiveis` | Array | Recebíveis retornados na mesma ordem da requisição |
+| `recebiveis[].recebivelId` | UUID | Identificador do recebível |
+| `recebiveis[].itens` | Array | Itens retornados na mesma ordem da requisição |
+| `recebiveis[].itens[].itemId` | UUID | Identificador do item; também usado como `idPublico` nas operações de solicitação e cancelamento |
+
+<Note>
+  O material recebido informa que os erros específicos deste endpoint seguem um **Formato A** com `statusCode`, `message` e `error`, mas o recorte termina antes da lista desses erros e da definição completa do formato. Nenhum erro específico adicional foi incluído nesta demonstração.
+</Note>
+
+## Webhooks
+
+Os webhooks permitem que a Saxxes comunique eventos da plataforma ao sistema integrador. Diferentemente das chamadas à API Pública, sua iniciativa parte da Saxxes.
+
+<Info>
+  O trecho disponibilizado contém apenas a introdução aos webhooks e o índice de assuntos previstos: **cadastro**, **assinatura de eventos**, **entrega**, **estrutura padrão** e **eventos disponíveis**. Ainda não há conteúdo suficiente para documentar esses pontos com segurança.
+</Info>
+
+## Referências técnicas
+
+- [OAuth 2.0 — RFC 6749](https://datatracker.ietf.org/doc/html/rfc6749)
+- [Client Credentials — RFC 6749, seção 4.4](https://datatracker.ietf.org/doc/html/rfc6749#section-4.4)
+- [Bearer Token — RFC 6750](https://datatracker.ietf.org/doc/html/rfc6750)
+
+---
+
+*Página demonstrativa preparada a partir de um recorte da documentação da Saxxes. A publicação como contrato oficial requer revisão do responsável técnico pelo produto.*
